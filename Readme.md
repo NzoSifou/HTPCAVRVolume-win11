@@ -32,7 +32,7 @@ Simply download the latest release, place the program .exe wherever you like, an
 
 After running it, select your AVR from the dropown and enter it's network IP address, then hit Save.
 
-You can also add the program, or a shortcut to it to your HTPC's startup folder so that the program automatically starts with your PC.
+You can also add the program, or a shortcut to it to your Windows startup folder so that the program automatically starts with your PC.
 To access your startup folder press Win+R and type `shell:Startup`
 
 ### Optional experimental :
