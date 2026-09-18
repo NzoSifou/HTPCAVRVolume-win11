@@ -65,9 +65,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AppSettings.cs" />
+    <Compile Include="AVRDevices\AvrConnection.cs" />
     <Compile Include="AVRDevices\StormAudioDevice.cs" />
     <Compile Include="AVRDevices\IAVRDevice.cs" />
     <Compile Include="GlobalKeyboardHook.cs" />
+    <Compile Include="VolumeController.cs" />
+    <Compile Include="VolumeFlyout.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="HTPCAVRVolume.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -75,7 +81,6 @@
       <DependentUpon>HTPCAVRVolume.cs</DependentUpon>
     </Compile>
     <Compile Include="AVRDevices\DenonMarantzDevice.cs" />
-    <Compile Include="KeyboardHook.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <EmbeddedResource Include="HTPCAVRVolume.resx">
