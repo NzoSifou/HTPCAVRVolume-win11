@@ -24,6 +24,9 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
     <PublishSingleFile>true</PublishSingleFile>
+
+    <!-- Program.cs takes over the entry point, to catch a renamed executable. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
