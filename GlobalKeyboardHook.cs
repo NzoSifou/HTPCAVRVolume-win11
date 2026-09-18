@@ -1,10 +1,19 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace HTPCAVRVolume
 {
+    /// <summary>
+    /// Grabs the volume keys before Windows sees them.
+    ///
+    /// Handlers run inside the hook callback, on the thread that installed the hook, and the
+    /// whole system's input queue waits on them. They must return immediately: anything that
+    /// touches the network belongs on a queue, not here. Windows silently drops a hook that
+    /// takes longer than LowLevelHooksTimeout (5 s by default), which is exactly what a blocking
+    /// connect to a switched-off amplifier used to do.
+    /// </summary>
     public class GlobalKeyboardHook : IDisposable
     {
         private const int WH_KEYBOARD_LL = 13;
@@ -17,7 +26,6 @@ namespace HTPCAVRVolume
         public event EventHandler VolumeDownPressed;
         public event EventHandler VolumeMutePressed;
 
-        // Delegate declaration
         private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
 
         public GlobalKeyboardHook()
@@ -43,24 +51,42 @@ namespace HTPCAVRVolume
                 switch (key)
                 {
                     case Keys.VolumeUp:
-                        VolumeUpPressed?.Invoke(this, EventArgs.Empty);
-                        return (IntPtr)1;  // // Prevents the key from being passed to Windows
+                        Raise(VolumeUpPressed);
+                        return (IntPtr)1;  // Prevents the key from being passed to Windows
 
                     case Keys.VolumeDown:
-                        VolumeDownPressed?.Invoke(this, EventArgs.Empty);
+                        Raise(VolumeDownPressed);
                         return (IntPtr)1;  // Block the key
 
                     case Keys.VolumeMute:
-                        VolumeMutePressed?.Invoke(this, EventArgs.Empty);
+                        Raise(VolumeMutePressed);
                         return (IntPtr)1;  // Block the key
                 }
             }
+
             return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        }
+
+        private static void Raise(EventHandler handler)
+        {
+            try
+            {
+                handler?.Invoke(null, EventArgs.Empty);
+            }
+            catch
+            {
+                // An exception thrown back into the hook chain would take the process with it,
+                // and with it the user's volume control.
+            }
         }
 
         public void Dispose()
         {
-            UnhookWindowsHookEx(_hookID);
+            if (_hookID != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_hookID);
+                _hookID = IntPtr.Zero;
+            }
         }
 
         #region PInvoke
