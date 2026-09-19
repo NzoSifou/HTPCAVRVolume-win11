@@ -65,16 +65,41 @@ the status line tells you the truth quickly. A connection that succeeds resets t
 
 With it off the app tries once and then leaves it to you.
 
+## Two processes
+
+The app is two programs in one file.
+
+Started with no argument it becomes the **background process**: a plain Win32 message loop holding
+the volume keys, the link to the receiver, the on-screen display, the tray icon and the audio
+keep-alive. WinUI is never loaded into it — `Program.Main` decides which half to be before any
+XAML type is touched, and the window half lives in its own method so its assemblies load only in a
+process that is going to show something.
+
+Started with `--settings` it becomes the **window**, which owns nothing. Every value it shows
+arrives from the background process over a named pipe, every change is a request back, and closing
+it ends that process outright. There is no hiding, no anchor window, nothing left resident.
+
+Starting the executable again while it is running does not make a second copy: it asks the one
+already there to show its window, and exits.
+
+The pipe is opened `Asynchronous` at both ends, which is not decoration. Each side reads on one
+thread and writes from another, and on a handle opened for synchronous I/O a blocked read stops the
+write from starting at all: the two sides wait for each other for ever.
+
 ## What it costs to leave running
 
-WinUI is not free: about 80 MB of working set with the window open, against 32 MB for the WinForms
-version this replaces. Closing the window cannot give that back — a WinUI window releases nothing
-when it closes, which is measurable — so instead the app collects and asks Windows to trim its
-working set whenever the window is put away.
+| | working set |
+| --- | --- |
+| background alone, nothing open | **21 MB** |
+| settings window open | 132 MB, plus the background |
+| after the window is closed | **7 MB** |
 
-The effect is worth having: **around 20 MB resident while it sits in the notification area**, less
-than the WinForms version ever used, at the cost of a beat the first time you open the window
-again while those pages come back. The committed memory stays around 66 MB either way.
+Against 32 MB for the WinForms version this replaces, and 80 MB for the same app before it was
+split in two. The window's cost arrives when it is opened and leaves with it.
+
+Some of that is the collection and working-set trim the background process runs once it is up and
+again whenever the window goes away, which is exactly when it goes back to doing almost nothing.
+
 
 ## What is not WinUI
 

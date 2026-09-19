@@ -1,6 +1,6 @@
 using System;
 using HTPCAVRVolume.AVRDevices;
-using Microsoft.UI.Dispatching;
+using HTPCAVRVolume.Background;
 
 namespace HTPCAVRVolume
 {
@@ -14,15 +14,15 @@ namespace HTPCAVRVolume
     /// </summary>
     sealed class VolumeController : IDisposable
     {
-        private readonly DispatcherQueueTimer _flushTimer;
+        private readonly PumpTimer _flushTimer;
         private IAVRDevice _device;
         private int _pendingSteps;
         private int _lastFlushTicks;
 
-        public VolumeController(DispatcherQueue dispatcher)
+        public VolumeController(MessagePump pump)
         {
             _lastFlushTicks = Environment.TickCount;
-            _flushTimer = dispatcher.CreateTimer();
+            _flushTimer = pump.CreateTimer();
             _flushTimer.Interval = TimeSpan.FromMilliseconds(40);
             _flushTimer.IsRepeating = false;
             _flushTimer.Tick += (sender, e) => Flush();

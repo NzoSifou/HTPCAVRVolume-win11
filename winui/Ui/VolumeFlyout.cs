@@ -4,7 +4,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.Runtime.InteropServices;
-using Microsoft.UI.Dispatching;
+using HTPCAVRVolume.Background;
 using Microsoft.Win32;
 
 namespace HTPCAVRVolume.Ui
@@ -39,8 +39,8 @@ namespace HTPCAVRVolume.Ui
         private const int FadeDurationMs = 160;
         private const int FadeTickMs = 15;
 
-        private readonly DispatcherQueueTimer _holdTimer;
-        private readonly DispatcherQueueTimer _fadeTimer;
+        private readonly PumpTimer _holdTimer;
+        private readonly PumpTimer _fadeTimer;
         private readonly WndProc _wndProc;
         private readonly string _className;
 
@@ -65,7 +65,7 @@ namespace HTPCAVRVolume.Ui
         private Color _track;
         private Color _fill;
 
-        public VolumeFlyout(DispatcherQueue dispatcher)
+        public VolumeFlyout(MessagePump pump)
         {
             _className = "HTPCAVRVolumeFlyout";
             _wndProc = OnMessage;
@@ -86,11 +86,11 @@ namespace HTPCAVRVolume.Ui
                 0, 0, 10, 10,
                 IntPtr.Zero, IntPtr.Zero, wc.hInstance, IntPtr.Zero);
 
-            _holdTimer = dispatcher.CreateTimer();
+            _holdTimer = pump.CreateTimer();
             _holdTimer.IsRepeating = false;
             _holdTimer.Tick += (sender, e) => BeginFade();
 
-            _fadeTimer = dispatcher.CreateTimer();
+            _fadeTimer = pump.CreateTimer();
             _fadeTimer.Interval = TimeSpan.FromMilliseconds(FadeTickMs);
             _fadeTimer.IsRepeating = true;
             _fadeTimer.Tick += (sender, e) => StepFade();
