@@ -37,6 +37,21 @@ namespace HTPCAVRVolume
         /// <summary>Minimum spacing between two commands on the wire.</summary>
         public int MinCommandIntervalMs { get; set; } = 60;
 
+        /// <summary>Keep trying to reach the receiver on its own after a failure.</summary>
+        public bool AutoReconnect { get; set; } = true;
+
+        /// <summary>How many attempts in a row may fail before the app stops trying.</summary>
+        public int ReconnectAttempts { get; set; } = 3;
+
+        /// <summary>How long one attempt waits for the receiver before calling it a failure.</summary>
+        public int ReconnectTimeoutSeconds { get; set; } = 3;
+
+        /// <summary>
+        /// Hold a silent stream open on the audio endpoint, so Windows does not power down the
+        /// receiver's audio path between tracks.
+        /// </summary>
+        public bool KeepAudioAlive { get; set; }
+
         public bool ShowOsd { get; set; } = true;
 
         public bool OsdDecibels { get; set; } = true;
@@ -95,6 +110,10 @@ namespace HTPCAVRVolume
                 "MaxVolumeIsManual=" + MaxVolumeIsManual,
                 "FlushIntervalMs=" + FlushIntervalMs.ToString(CultureInfo.InvariantCulture),
                 "MinCommandIntervalMs=" + MinCommandIntervalMs.ToString(CultureInfo.InvariantCulture),
+                "AutoReconnect=" + AutoReconnect,
+                "ReconnectAttempts=" + ReconnectAttempts.ToString(CultureInfo.InvariantCulture),
+                "ReconnectTimeoutSeconds=" + ReconnectTimeoutSeconds.ToString(CultureInfo.InvariantCulture),
+                "KeepAudioAlive=" + KeepAudioAlive,
                 "ShowOsd=" + ShowOsd,
                 "OsdDecibels=" + OsdDecibels,
                 "OsdOnExternalChange=" + OsdOnExternalChange,
@@ -122,6 +141,18 @@ namespace HTPCAVRVolume
                     break;
                 case "MinCommandIntervalMs":
                     MinCommandIntervalMs = ParseInt(value, MinCommandIntervalMs);
+                    break;
+                case "AutoReconnect":
+                    AutoReconnect = ParseBool(value, AutoReconnect);
+                    break;
+                case "ReconnectAttempts":
+                    ReconnectAttempts = ParseInt(value, ReconnectAttempts);
+                    break;
+                case "ReconnectTimeoutSeconds":
+                    ReconnectTimeoutSeconds = ParseInt(value, ReconnectTimeoutSeconds);
+                    break;
+                case "KeepAudioAlive":
+                    KeepAudioAlive = ParseBool(value, KeepAudioAlive);
                     break;
                 case "ShowOsd":
                     ShowOsd = ParseBool(value, ShowOsd);

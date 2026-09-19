@@ -29,11 +29,14 @@ namespace HTPCAVRVolume.AVRDevices
         private int _lastCommandTicks;
         private int _volumeAnswersPending;
 
-        public DenonMarantzDevice(string host, int minCommandIntervalMs)
+        public DenonMarantzDevice(string host, int minCommandIntervalMs, int connectTimeoutMs, int attemptLimit)
         {
             _lastCommandTicks = Environment.TickCount - SelfEchoWindowMs;
 
-            _link = new AvrConnection(host, 23, "\r", minCommandIntervalMs) { HeartbeatCommand = "MV?" };
+            _link = new AvrConnection(host, 23, "\r", minCommandIntervalMs, connectTimeoutMs, attemptLimit)
+            {
+                HeartbeatCommand = "MV?"
+            };
             _link.LineReceived += OnLineReceived;
             _link.LinkChanged += OnLinkChanged;
         }
@@ -43,6 +46,8 @@ namespace HTPCAVRVolume.AVRDevices
         public event EventHandler<LinkEventArgs> LinkChanged;
 
         public AvrLinkState Link => _link.State;
+
+        public void Retry() => _link.Retry();
 
         public bool SupportsAbsoluteVolume => true;
 

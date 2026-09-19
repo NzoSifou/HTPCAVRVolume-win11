@@ -34,6 +34,7 @@ namespace HTPCAVRVolume
         private VolumeFlyout _flyout;
         private GlobalKeyboardHook _hook;
         private TrayIcon _tray;
+        private AudioKeepAlive _audio;
         private IAVRDevice _device;
         private AppWindow _appWindow;
 
@@ -83,6 +84,8 @@ namespace HTPCAVRVolume
             _flyout = new VolumeFlyout(_dispatcher);
             _flyout.Prepare();
 
+            _audio = new AudioKeepAlive(status => _dispatcher.TryEnqueue(() => ShowAudioStatus(status)));
+
             _tray = new TrayIcon("HTPCAVRVolume");
             _tray.Activated += (sender, e) => _dispatcher.TryEnqueue(ShowWindow);
             _tray.ExitRequested += (sender, e) => _dispatcher.TryEnqueue(Quit);
@@ -90,6 +93,8 @@ namespace HTPCAVRVolume
             _settings = AppSettings.Load(_configPath);
             ShowSettings();
             ApplyConfiguration();
+
+            _audio.Enable(_settings.KeepAudioAlive);
 
             _hook = new GlobalKeyboardHook();
             _hook.VolumeUpPressed += (sender, e) => _controller.Nudge(1);
@@ -101,6 +106,7 @@ namespace HTPCAVRVolume
             if (_settings.IsConfigured && _tray.IsVisible)
             {
                 _appWindow.Hide();
+                ReleaseWhatWeCan();
             }
             else
             {
@@ -161,7 +167,36 @@ namespace HTPCAVRVolume
             // Closing the window only puts the app away; the volume keys keep working.
             args.Cancel = true;
             _appWindow.Hide();
+            ReleaseWhatWeCan();
         }
+
+        /// <summary>
+        /// Hands back what the window was using while nobody is looking at it. WinUI itself never
+        /// gives its memory back, but a collection and a working-set trim move the pages the app
+        /// is no longer touching out of physical memory, which is what a background utility
+        /// should be costing between two key presses.
+        /// </summary>
+        private void ReleaseWhatWeCan()
+        {
+            GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect(2, GCCollectionMode.Aggressive, true, true);
+
+            try
+            {
+                SetProcessWorkingSetSize(GetCurrentProcess(), (IntPtr)(-1), (IntPtr)(-1));
+            }
+            catch
+            {
+                // A refused trim costs nothing but the memory we hoped to give back.
+            }
+        }
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        private static extern IntPtr GetCurrentProcess();
+
+        [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool SetProcessWorkingSetSize(IntPtr process, IntPtr minimum, IntPtr maximum);
 
         private void Quit()
         {
@@ -169,6 +204,7 @@ namespace HTPCAVRVolume
 
             SaveNow();
             _hook?.Dispose();
+            _audio?.Dispose();
             _controller?.Dispose();
             _device?.Dispose();
             _flyout?.Dispose();
@@ -191,6 +227,13 @@ namespace HTPCAVRVolume
                 StepBox.Value = _settings.StepDecibels;
                 OverlaySwitch.IsOn = _settings.ShowOsd;
                 RemoteSwitch.IsOn = _settings.OsdOnExternalChange;
+
+                AutoReconnectSwitch.IsOn = _settings.AutoReconnect;
+                AttemptsBox.Value = _settings.ReconnectAttempts;
+                TimeoutBox.Value = _settings.ReconnectTimeoutSeconds;
+                ShowReconnectAvailability();
+
+                KeepAliveSwitch.IsOn = _settings.KeepAudioAlive;
 
                 _decibels = _settings.OsdDecibels;
                 UnitBox.SelectedIndex = _decibels ? 0 : 1;
@@ -229,13 +272,19 @@ namespace HTPCAVRVolume
                 return;
             }
 
+            int timeout = Math.Max(1, _settings.ReconnectTimeoutSeconds) * 1000;
+
+            // Zero means never stop trying, which is what the switch turning retries off would
+            // mean if it were not for the one attempt we always make.
+            int attempts = _settings.AutoReconnect ? Math.Max(1, _settings.ReconnectAttempts) : 1;
+
             switch (_settings.Device)
             {
                 case "DenonMarantz":
-                    _device = new DenonMarantzDevice(_settings.Host, _settings.MinCommandIntervalMs);
+                    _device = new DenonMarantzDevice(_settings.Host, _settings.MinCommandIntervalMs, timeout, attempts);
                     break;
                 case "StormAudio":
-                    _device = new StormAudioDevice(_settings.Host, _settings.MinCommandIntervalMs);
+                    _device = new StormAudioDevice(_settings.Host, _settings.MinCommandIntervalMs, timeout, attempts);
                     break;
                 default:
                     SetStatus("Unknown receiver \"" + _settings.Device + "\".", false);
@@ -456,7 +505,15 @@ namespace HTPCAVRVolume
                 : _device.Link == AvrLinkState.Connected ? "connected"
                 : _device.Link == AvrLinkState.Connecting ? "connecting" : "disconnected";
 
-            ReceiverExpander.Description = brand + " · " + host + " · " + link;
+            string retries = _settings.AutoReconnect
+                ? " · " + _settings.ReconnectAttempts + "×" + _settings.ReconnectTimeoutSeconds + " s"
+                : " · no auto-reconnect";
+
+            ReceiverExpander.Description = brand + " · " + host + " · " + link + retries;
+
+            AudioExpander.Description = _settings.KeepAudioAlive
+                ? "Keeping the endpoint awake · " + (_audio?.Status ?? "starting")
+                : "Windows decides when the audio device sleeps";
 
             OverlayExpander.Description = _settings.ShowOsd
                 ? (_settings.OsdOnExternalChange ? "On · follows the receiver's own remote" : "On · your changes only")
@@ -550,6 +607,7 @@ namespace HTPCAVRVolume
         {
             SaveNow();
             ApplyConfiguration();
+            _device?.Retry();
         }
 
         private void OnSliderChanged(object sender, Microsoft.UI.Xaml.Controls.Primitives.RangeBaseValueChangedEventArgs e)
@@ -648,6 +706,73 @@ namespace HTPCAVRVolume
             ConfigureSlider();
             ShowSummaries();
             QueueSave();
+        }
+
+        private void OnAutoReconnectToggled(object sender, RoutedEventArgs e)
+        {
+            if (_updatingUi)
+            {
+                return;
+            }
+
+            _settings.AutoReconnect = AutoReconnectSwitch.IsOn;
+            ShowReconnectAvailability();
+            ShowSummaries();
+            QueueSave();
+            ApplyConfiguration();
+        }
+
+        /// <summary>The two numbers only mean anything while the app is allowed to retry.</summary>
+        private void ShowReconnectAvailability()
+        {
+            bool on = AutoReconnectSwitch.IsOn;
+            AttemptsCard.IsEnabled = on;
+            TimeoutCard.IsEnabled = on;
+        }
+
+        private void OnAttemptsChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+        {
+            if (_updatingUi || double.IsNaN(args.NewValue))
+            {
+                return;
+            }
+
+            _settings.ReconnectAttempts = (int)args.NewValue;
+            ShowSummaries();
+            QueueSave();
+            ApplyConfiguration();
+        }
+
+        private void OnTimeoutChanged(NumberBox sender, NumberBoxValueChangedEventArgs args)
+        {
+            if (_updatingUi || double.IsNaN(args.NewValue))
+            {
+                return;
+            }
+
+            _settings.ReconnectTimeoutSeconds = (int)args.NewValue;
+            ShowSummaries();
+            QueueSave();
+            ApplyConfiguration();
+        }
+
+        private void OnKeepAliveToggled(object sender, RoutedEventArgs e)
+        {
+            if (_updatingUi)
+            {
+                return;
+            }
+
+            _settings.KeepAudioAlive = KeepAliveSwitch.IsOn;
+            _audio.Enable(_settings.KeepAudioAlive);
+            ShowSummaries();
+            QueueSave();
+        }
+
+        private void ShowAudioStatus(string status)
+        {
+            KeepAliveStatus.Text = status;
+            ShowSummaries();
         }
 
         private void OnOverlayToggled(object sender, RoutedEventArgs e)

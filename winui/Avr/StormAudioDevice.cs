@@ -17,9 +17,9 @@ namespace HTPCAVRVolume.AVRDevices
         private readonly AvrConnection _link;
         private bool _muted;
 
-        public StormAudioDevice(string host, int minCommandIntervalMs)
+        public StormAudioDevice(string host, int minCommandIntervalMs, int connectTimeoutMs, int attemptLimit)
         {
-            _link = new AvrConnection(host, 23, "\r", minCommandIntervalMs);
+            _link = new AvrConnection(host, 23, "\r", minCommandIntervalMs, connectTimeoutMs, attemptLimit);
             _link.LinkChanged += OnLinkChanged;
         }
 
@@ -28,6 +28,8 @@ namespace HTPCAVRVolume.AVRDevices
         public event EventHandler<LinkEventArgs> LinkChanged;
 
         public AvrLinkState Link => _link.State;
+
+        public void Retry() => _link.Retry();
 
         public bool SupportsAbsoluteVolume => false;
 

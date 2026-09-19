@@ -27,6 +27,12 @@
 
     <!-- Program.cs takes over the entry point, to catch a renamed executable. -->
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+
+    <!-- A tray utility is not a server: the workstation collector keeps a much smaller heap,
+         and without a background collector there is no extra thread idling for it. -->
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <TieredPGO>true</TieredPGO>
   </PropertyGroup>
 
   <ItemGroup>
@@ -36,6 +42,8 @@
     <PackageReference Include="CommunityToolkit.WinUI.Controls.SettingsControls" Version="8.*" />
     <!-- The on-screen display is drawn with GDI+ into a layered window. -->
     <PackageReference Include="System.Drawing.Common" Version="8.*" />
+    <!-- WASAPI, for the silent stream that keeps the receiver's audio endpoint awake. -->
+    <PackageReference Include="NAudio.Wasapi" Version="2.*" />
   </ItemGroup>
 
   <ItemGroup>

@@ -92,6 +92,46 @@
                         <tk:SettingsCard Header="IP address" Description="Receiver menu &#8250; Network &#8250; Information">
                             <TextBox x:Name="HostBox" MinWidth="160" LostFocus="OnHostChanged" />
                         </tk:SettingsCard>
+                        <tk:SettingsCard Header="Auto-reconnect"
+                                         Description="Keep trying on its own when the receiver does not answer">
+                            <ToggleSwitch x:Name="AutoReconnectSwitch" MinWidth="0" OnContent="" OffContent=""
+                                          Toggled="OnAutoReconnectToggled" />
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="AttemptsCard" Header="Attempts"
+                                         Description="How many tries before it gives up and waits for Reconnect">
+                            <NumberBox x:Name="AttemptsBox" MinWidth="96"
+                                       SpinButtonPlacementMode="Inline"
+                                       SmallChange="1" Minimum="1" Maximum="20"
+                                       ValueChanged="OnAttemptsChanged" />
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="TimeoutCard" Header="Timeout"
+                                         Description="Seconds one try waits for an answer">
+                            <NumberBox x:Name="TimeoutBox" MinWidth="96"
+                                       SpinButtonPlacementMode="Inline"
+                                       SmallChange="1" Minimum="1" Maximum="120"
+                                       ValueChanged="OnTimeoutChanged" />
+                        </tk:SettingsCard>
+                    </tk:SettingsExpander.Items>
+                </tk:SettingsExpander>
+
+                <!-- Audio endpoint -->
+                <tk:SettingsExpander x:Name="AudioExpander"
+                                     Header="Audio device"
+                                     Description=""
+                                     IsExpanded="True">
+                    <tk:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="&#xE995;" />
+                    </tk:SettingsExpander.HeaderIcon>
+                    <tk:SettingsExpander.Items>
+                        <tk:SettingsCard Header="Keep audio device alive"
+                                         Description="Holds a silent stream on the receiver so Windows stops powering its audio down between tracks, which is what causes the delay and the pop when sound starts again">
+                            <ToggleSwitch x:Name="KeepAliveSwitch" MinWidth="0" OnContent="" OffContent=""
+                                          Toggled="OnKeepAliveToggled" />
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="KeepAliveStatusCard" Header="State">
+                            <TextBlock x:Name="KeepAliveStatus" Text="Off" VerticalAlignment="Center"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                        </tk:SettingsCard>
                     </tk:SettingsExpander.Items>
                 </tk:SettingsExpander>
 

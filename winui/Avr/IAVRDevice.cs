@@ -32,6 +32,9 @@ namespace HTPCAVRVolume.AVRDevices
         /// <summary>State of the control session right now.</summary>
         AvrLinkState Link { get; }
 
+        /// <summary>Starts trying again after the link gave up.</summary>
+        void Retry();
+
         /// <summary>
         /// True when the device can be told to go straight to a level. A wheel flick then costs
         /// one command instead of one per detent.

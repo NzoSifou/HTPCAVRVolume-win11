@@ -41,6 +41,41 @@ itself: the process dies with a stowed exception (`0xC000027B`) and no message.
 `Program.cs` replaces the entry point XAML would generate purely to catch that case and say so,
 before any of this can happen. The folder the file sits in does not matter — only its name.
 
+## Keeping the audio device awake
+
+Windows powers an audio endpoint down between playback sessions, and waking it costs a second or
+three of missing sound, sometimes with a pop. *Keep audio device alive*, off by default, holds a
+silent WASAPI shared-mode stream on the endpoint so it never idles.
+
+It stands aside rather than fighting: a player that takes the device in exclusive mode to
+bit-stream TrueHD or DTS-HD disconnects our session, and `Ui/AudioKeepAlive.cs` lets go at once
+and tries again ten seconds later. It follows the default endpoint, so plugging headphones in
+moves it with them, and it stops when there is no active endpoint to hold.
+
+All of it runs on its own MTA thread. WASAPI is COM, and the window's thread is not the place to
+wait on it.
+
+## Reconnecting
+
+*Auto-reconnect* decides whether the app keeps trying on its own after the receiver fails to
+answer. With it on, **attempts** is how many tries in a row may fail before it gives up and waits
+for the Reconnect button, and **timeout** is how many seconds one try waits. Three tries of three
+seconds is a reasonable default: enough for a receiver that is still booting, short enough that
+the status line tells you the truth quickly. A connection that succeeds resets the count.
+
+With it off the app tries once and then leaves it to you.
+
+## What it costs to leave running
+
+WinUI is not free: about 80 MB of working set with the window open, against 32 MB for the WinForms
+version this replaces. Closing the window cannot give that back — a WinUI window releases nothing
+when it closes, which is measurable — so instead the app collects and asks Windows to trim its
+working set whenever the window is put away.
+
+The effect is worth having: **around 20 MB resident while it sits in the notification area**, less
+than the WinForms version ever used, at the cost of a beat the first time you open the window
+again while those pages come back. The committed memory stays around 66 MB either way.
+
 ## What is not WinUI
 
 Two things WinUI cannot do, kept in Win32 and called through P/Invoke:

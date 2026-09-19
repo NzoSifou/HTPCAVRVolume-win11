@@ -47,13 +47,12 @@ namespace HTPCAVRVolume.AVRDevices
     /// </summary>
     class AvrConnection : IDisposable
     {
-        private const int ConnectTimeoutMs = 3000;
-        private const int MaxBackoffMs = 15000;
-
         private readonly string _host;
         private readonly int _port;
         private readonly string _terminator;
         private readonly int _minCommandIntervalMs;
+        private readonly int _connectTimeoutMs;
+        private readonly int _attemptLimit;
 
         private readonly object _gate = new object();
         private readonly List<Command> _queue = new List<Command>();
@@ -66,12 +65,20 @@ namespace HTPCAVRVolume.AVRDevices
         private int _lastHeartbeatTicks;
         private AvrLinkState _state = AvrLinkState.Disconnected;
 
-        public AvrConnection(string host, int port, string terminator, int minCommandIntervalMs)
+        /// <param name="connectTimeoutMs">How long one attempt waits for the AVR to answer.</param>
+        /// <param name="attemptLimit">
+        /// How many attempts in a row may fail before we stop trying. Zero means never stop. A
+        /// connection that succeeds starts the count again.
+        /// </param>
+        public AvrConnection(string host, int port, string terminator, int minCommandIntervalMs,
+            int connectTimeoutMs, int attemptLimit)
         {
             _host = host;
             _port = port;
             _terminator = terminator;
             _minCommandIntervalMs = minCommandIntervalMs;
+            _connectTimeoutMs = Math.Max(500, connectTimeoutMs);
+            _attemptLimit = Math.Max(0, attemptLimit);
             _lastSentTicks = Environment.TickCount;
             _lastHeartbeatTicks = Environment.TickCount;
 
@@ -89,6 +96,9 @@ namespace HTPCAVRVolume.AVRDevices
         public string HeartbeatCommand { get; set; }
 
         public int HeartbeatIntervalMs { get; set; } = 45000;
+
+        /// <summary>Breath between two attempts.</summary>
+        private const int RetryPauseMs = 1000;
 
         public AvrLinkState State
         {
@@ -143,28 +153,44 @@ namespace HTPCAVRVolume.AVRDevices
 
         private void Run()
         {
-            int backoffMs = 0;
+            int failures = 0;
 
             while (!_stopping)
             {
                 if (CurrentClient == null)
                 {
-                    if (backoffMs > 0)
+                    if (_attemptLimit > 0 && failures >= _attemptLimit)
                     {
-                        _wake.WaitOne(backoffMs);
+                        // Given up. Nothing happens again until someone asks for it, which is
+                        // what the Reconnect button is for.
+                        _wake.WaitOne();
+                        if (_stopping)
+                        {
+                            break;
+                        }
+
+                        failures = 0;
+                        continue;
+                    }
+
+                    if (failures > 0)
+                    {
+                        // A short breath between attempts, so a receiver that refuses instantly
+                        // is not hammered.
+                        _wake.WaitOne(RetryPauseMs);
                         if (_stopping)
                         {
                             break;
                         }
                     }
 
-                    if (!TryConnect())
+                    if (!TryConnect(failures + 1))
                     {
-                        backoffMs = Math.Min(backoffMs == 0 ? 1000 : backoffMs * 2, MaxBackoffMs);
+                        failures++;
                         continue;
                     }
 
-                    backoffMs = 0;
+                    failures = 0;
                 }
 
                 // Wakes up on its own as well, so a dropped link is noticed even when nobody is
@@ -187,19 +213,28 @@ namespace HTPCAVRVolume.AVRDevices
             get { lock (_gate) { return _client; } }
         }
 
-        private bool TryConnect()
+        /// <summary>Starts trying again after we had given up.</summary>
+        public void Retry()
         {
-            SetState(AvrLinkState.Connecting, "Connecting to " + _host + ":" + _port + "...");
+            _wake.Set();
+        }
+
+        private bool TryConnect(int attempt)
+        {
+            string counted = _attemptLimit > 1 ? " (attempt " + attempt + " of " + _attemptLimit + ")" : string.Empty;
+            SetState(AvrLinkState.Connecting, "Connecting to " + _host + ":" + _port + "..." + counted);
 
             TcpClient client = new TcpClient();
             try
             {
                 client.NoDelay = true;
                 IAsyncResult pending = client.BeginConnect(_host, _port, null, null);
-                if (!pending.AsyncWaitHandle.WaitOne(ConnectTimeoutMs))
+                if (!pending.AsyncWaitHandle.WaitOne(_connectTimeoutMs))
                 {
                     client.Close();
-                    SetState(AvrLinkState.Disconnected, "No answer from " + _host + ":" + _port);
+                    SetState(AvrLinkState.Disconnected, Exhausted(attempt)
+                        ? "No answer from " + _host + " after " + attempt + (attempt > 1 ? " attempts" : " attempt")
+                        : "No answer from " + _host + ":" + _port);
                     return false;
                 }
 
@@ -208,7 +243,9 @@ namespace HTPCAVRVolume.AVRDevices
             catch (Exception ex)
             {
                 client.Close();
-                SetState(AvrLinkState.Disconnected, Describe(ex));
+                SetState(AvrLinkState.Disconnected, Exhausted(attempt)
+                    ? Describe(ex) + " (gave up after " + attempt + (attempt > 1 ? " attempts)" : " attempt)")
+                    : Describe(ex));
                 return false;
             }
 
@@ -372,6 +409,12 @@ namespace HTPCAVRVolume.AVRDevices
                 SetState(AvrLinkState.Disconnected, detail);
                 _wake.Set();
             }
+        }
+
+        /// <summary>True when this failure is the last one we are allowed.</summary>
+        private bool Exhausted(int attempt)
+        {
+            return _attemptLimit > 0 && attempt >= _attemptLimit;
         }
 
         private void SetState(AvrLinkState state, string detail)
