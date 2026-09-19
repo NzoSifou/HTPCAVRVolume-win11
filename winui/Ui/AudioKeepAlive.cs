@@ -43,6 +43,7 @@ namespace HTPCAVRVolume.Ui
         private MMDeviceEnumerator _enumerator;
         private NotificationClient _notifications;
         private int _yieldUntilTicks;
+        private volatile string _pendingYield;
 
         /// <param name="report">Called with a short line whenever the state changes.</param>
         public AudioKeepAlive(Action<string> report)
@@ -138,6 +139,18 @@ namespace HTPCAVRVolume.Ui
         /// <summary>One pass: open the stream if it should be open, notice if it has gone.</summary>
         private void Tend()
         {
+            string yielding = _pendingYield;
+            if (yielding != null)
+            {
+                // Something else claimed the device and told us so. Let go here, on this thread,
+                // rather than in the callback that brought the news: the stream does not always
+                // admit it has stopped, and waiting for it to notice never ends.
+                _pendingYield = null;
+                Release(yielding + ", retrying in " + YieldSeconds + " s");
+                _yieldUntilTicks = Environment.TickCount + YieldSeconds * 1000;
+                return;
+            }
+
             if (_output != null)
             {
                 if (_output.PlaybackState == PlaybackState.Playing)
@@ -227,15 +240,14 @@ namespace HTPCAVRVolume.Ui
             _wake.Set();
         }
 
-        /// <summary>Something else wants the device: let go now and stay away for a while.</summary>
+        /// <summary>
+        /// Something else wants the device. This arrives on a COM callback thread, so it only
+        /// leaves a note: releasing WASAPI from inside one of its own callbacks is a good way to
+        /// deadlock.
+        /// </summary>
         internal void Yield(string why)
         {
-            lock (_gate)
-            {
-                _yieldUntilTicks = Environment.TickCount + YieldSeconds * 1000;
-            }
-
-            SetStatus(why + ", retrying in " + YieldSeconds + " s");
+            _pendingYield = why;
             _wake.Set();
         }
 
@@ -252,6 +264,8 @@ namespace HTPCAVRVolume.Ui
 
         private void Release(string status)
         {
+            _pendingYield = null;
+
             WasapiOut output = _output;
             _output = null;
 
