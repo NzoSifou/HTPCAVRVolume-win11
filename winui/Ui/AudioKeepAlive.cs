@@ -119,8 +119,11 @@ namespace HTPCAVRVolume.Ui
                     _yieldUntilTicks = Environment.TickCount + YieldSeconds * 1000;
                 }
 
-                // Woken by a device change or by Enable; the timeout is what makes the yield end.
-                _wake.WaitOne(1000);
+                // Woken by a device change, by Enable and by an app taking the device, so the
+                // timeout only has to be short while a yield is being waited out. The rest of
+                // the time there is nothing to look at every second.
+                bool waiting = _pendingYield != null || unchecked(Environment.TickCount - _yieldUntilTicks) < 0;
+                _wake.WaitOne(waiting ? 1000 : 5000);
             }
 
             Release(null);

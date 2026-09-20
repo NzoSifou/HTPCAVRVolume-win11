@@ -193,9 +193,10 @@ namespace HTPCAVRVolume.AVRDevices
                     failures = 0;
                 }
 
-                // Wakes up on its own as well, so a dropped link is noticed even when nobody is
-                // touching the volume.
-                _wake.WaitOne(250);
+                // Woken by anything queued and by the link dropping, so the timeout is only
+                // there for the heartbeat and as a backstop. Waking four times a second to find
+                // an empty queue is a cost a program that runs all day should not pay.
+                _wake.WaitOne(UntilHeartbeat());
                 if (_stopping)
                 {
                     break;
@@ -334,6 +335,28 @@ namespace HTPCAVRVolume.AVRDevices
                     return;
                 }
             }
+        }
+
+        /// <summary>
+        /// How long there is to wait before the heartbeat falls due, bounded so that a device
+        /// with no heartbeat at all is still looked in on now and then.
+        /// </summary>
+        private int UntilHeartbeat()
+        {
+            const int Longest = 5000;
+
+            if (string.IsNullOrEmpty(HeartbeatCommand))
+            {
+                return Longest;
+            }
+
+            int left = HeartbeatIntervalMs - unchecked(Environment.TickCount - _lastHeartbeatTicks);
+            if (left < 50)
+            {
+                return 50;
+            }
+
+            return left < Longest ? left : Longest;
         }
 
         private void Heartbeat()

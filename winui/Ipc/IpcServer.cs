@@ -17,9 +17,13 @@ namespace HTPCAVRVolume.Ipc
         private readonly Action<Exception> _onError;
         private readonly object _gate = new object();
 
+        private readonly AutoResetEvent _outgoing = new AutoResetEvent(false);
+
         private Thread _thread;
+        private Thread _sender;
         private NamedPipeServerStream _pipe;
         private StreamWriter _writer;
+        private State _latest;
         private volatile bool _stopping;
 
         /// <param name="handle">
@@ -36,24 +40,69 @@ namespace HTPCAVRVolume.Ipc
         {
             _thread = new Thread(Listen) { IsBackground = true, Name = "Settings pipe" };
             _thread.Start();
+
+            _sender = new Thread(Send) { IsBackground = true, Name = "Settings pipe writer" };
+            _sender.Start();
         }
 
         /// <summary>Raised on the pipe thread once a window has gone away.</summary>
         public event EventHandler ClientLeft;
 
-        /// <summary>Tells the window, if one is attached, that something changed.</summary>
+        /// <summary>
+        /// Whether a window is listening. Building a state to send to nobody is the commonest
+        /// thing this process could waste its time on: every line the receiver says would make
+        /// one.
+        /// </summary>
+        public bool HasClient
+        {
+            get { lock (_gate) { return _writer != null; } }
+        }
+
+        /// <summary>
+        /// Tells the window, if one is attached, that something changed.
+        ///
+        /// It leaves the state in a single slot for the writer thread and returns at once. A
+        /// pipe whose reader has stopped reading fills up and blocks whoever writes to it, and
+        /// this is called from the thread that also holds the volume keys and the on-screen
+        /// display: a window that stalls must not be able to take those down with it. Anything
+        /// still waiting when a newer state arrives is dropped, because each state says
+        /// everything, so the newest one is the only one worth sending.
+        /// </summary>
         public void Push(State state)
         {
             lock (_gate)
             {
-                if (_writer == null)
+                _latest = state;
+            }
+
+            _outgoing.Set();
+        }
+
+        /// <summary>The only thread that ever writes to the pipe.</summary>
+        private void Send()
+        {
+            while (!_stopping)
+            {
+                // No timeout: there is nothing to do until someone puts a state in the slot.
+                _outgoing.WaitOne();
+
+                State state;
+                StreamWriter writer;
+                lock (_gate)
                 {
-                    return;
+                    state = _latest;
+                    _latest = null;
+                    writer = _writer;
+                }
+
+                if (state == null || writer == null)
+                {
+                    continue;
                 }
 
                 try
                 {
-                    _writer.WriteLine(JsonSerializer.Serialize(state, Protocol.Json));
+                    writer.WriteLine(JsonSerializer.Serialize(state, Protocol.Json));
                 }
                 catch
                 {
@@ -79,7 +128,9 @@ namespace HTPCAVRVolume.Ipc
                 }
             }
 
+            _outgoing.Set();
             _thread?.Join(500);
+            _sender?.Join(500);
         }
 
         private void Listen()
@@ -126,10 +177,9 @@ namespace HTPCAVRVolume.Ipc
                         State state = _handle(request);
                         if (state != null)
                         {
-                            lock (_gate)
-                            {
-                                writer.WriteLine(JsonSerializer.Serialize(state, Protocol.Json));
-                            }
+                            // Down the same slot as everything else: the window does not match
+                            // answers to questions, it just draws the latest state it is given.
+                            Push(state);
                         }
                     }
                 }
