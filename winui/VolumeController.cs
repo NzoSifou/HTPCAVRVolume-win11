@@ -62,7 +62,7 @@ namespace HTPCAVRVolume
         /// </summary>
         public void Nudge(int steps)
         {
-            if (_device == null)
+            if (!Live(_device))
             {
                 return;
             }
@@ -84,7 +84,7 @@ namespace HTPCAVRVolume
         public void SetVolume(double volume)
         {
             IAVRDevice device = _device;
-            if (device == null || !device.SupportsAbsoluteVolume)
+            if (!Live(device) || !device.SupportsAbsoluteVolume)
             {
                 return;
             }
@@ -98,7 +98,21 @@ namespace HTPCAVRVolume
 
         public void ToggleMute()
         {
-            _device?.SetMute(!_device.Muted);
+            if (Live(_device))
+            {
+                _device.SetMute(!_device.Muted);
+            }
+        }
+
+        /// <summary>
+        /// Whether there is anything to change. A zone that is switched off has no volume, so a
+        /// key press does nothing at all: no command down the wire, no display of a number that
+        /// means nothing. The key is still swallowed -- that happens in the hook, before any of
+        /// this -- so Windows does not take its own volume back while the receiver is asleep.
+        /// </summary>
+        private static bool Live(IAVRDevice device)
+        {
+            return device != null && device.PowerOf(device.Zone) != false;
         }
 
         public void Dispose()
@@ -115,7 +129,7 @@ namespace HTPCAVRVolume
             _pendingSteps = 0;
 
             IAVRDevice device = _device;
-            if (steps == 0 || device == null)
+            if (steps == 0 || !Live(device))
             {
                 return;
             }

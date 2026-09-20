@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace HTPCAVRVolume.AVRDevices
 {
@@ -34,6 +35,37 @@ namespace HTPCAVRVolume.AVRDevices
         public bool SupportsAbsoluteVolume => false;
 
         public double VolumeQuantum => 1;
+
+        /// <summary>No setting of its own to follow, so the app keeps its own preference.</summary>
+        public bool SupportsDisplayUnit => false;
+
+        public bool? DecibelDisplay => null;
+
+        public void SetDecibelDisplay(bool decibels)
+        {
+        }
+
+        /// <summary>One zone, and no way to ask for another.</summary>
+        public Zone Zone
+        {
+            get { return Zone.Main; }
+            set { }
+        }
+
+        public IReadOnlyList<Zone> AvailableZones { get; } = new[] { Zone.Main };
+
+        public bool? PowerOf(Zone zone)
+        {
+            return null;
+        }
+
+        public void SetPower(Zone zone, bool on)
+        {
+        }
+
+        public void SetZoneLimit(Zone zone, double limit)
+        {
+        }
 
         public double? Volume => null;
 

@@ -31,6 +31,7 @@ namespace HTPCAVRVolume.Background
         private IpcServer _server;
         private IAVRDevice _device;
         private Process _window;
+        private PumpTimer _settle;
 
         private bool _maximumApplied;
         private string _statusDetail;
@@ -53,7 +54,7 @@ namespace HTPCAVRVolume.Background
             _audio = new AudioKeepAlive(status => _pump.Post(() => PushState()));
             _audio.Enable(_settings.KeepAudioAlive);
 
-            _tray = new TrayIcon("HTPCAVRVolume");
+            _tray = new TrayIcon("HTPC AVR Volume");
             _tray.Activated += (sender, e) => _pump.Post(OpenWindow);
             _tray.ExitRequested += (sender, e) => _pump.Post(Quit);
 
@@ -76,6 +77,16 @@ namespace HTPCAVRVolume.Background
             }
 
             Relax();
+
+            // And again once everything has actually happened: the first call lands before the
+            // socket, the audio device and the tray icon have finished asking for what they
+            // need, so most of what it gives back is taken straight out again.
+            _settle = _pump.CreateTimer();
+            _settle.Interval = TimeSpan.FromSeconds(20);
+            _settle.IsRepeating = false;
+            _settle.Tick += (sender, e) => { _settle.Stop(); Relax(); };
+            _settle.Start();
+
             _pump.Run();
         }
 
@@ -108,6 +119,7 @@ namespace HTPCAVRVolume.Background
 
         public void Dispose()
         {
+            _settle?.Stop();
             _hook?.Dispose();
             _audio?.Dispose();
             _server?.Dispose();
@@ -210,6 +222,14 @@ namespace HTPCAVRVolume.Background
                     _controller.ToggleMute();
                     break;
 
+                case "power":
+                    if (_device != null && Enum.TryParse(request.Name, out Zone target))
+                    {
+                        _device.SetPower(target, Flag(request.Value, true));
+                    }
+
+                    break;
+
                 case "reconnect":
                     ApplyConfiguration();
                     _device?.Retry();
@@ -251,9 +271,25 @@ namespace HTPCAVRVolume.Background
                     _settings.MaxVolume = Number(value, _settings.MaxVolume);
                     _settings.MaxVolumeIsManual = true;
                     _controller.MaxVolume = _settings.MaxVolume;
+
+                    // A zone's maximum is not ours to keep to ourselves: it is the Limit in the
+                    // receiver's own menu, and picking one here sets it there.
+                    if (_device != null && _settings.ActiveZone != Zone.Main)
+                    {
+                        _device.SetZoneLimit(_settings.ActiveZone, _settings.MaxVolume);
+                    }
+
                     break;
                 case "Decibels":
                     _settings.OsdDecibels = Flag(value, _settings.OsdDecibels);
+
+                    // The receiver owns this setting, so changing it here changes it there:
+                    // the front panel and the app never disagree about what a number means.
+                    if (_device != null && _device.SupportsDisplayUnit)
+                    {
+                        _device.SetDecibelDisplay(_settings.OsdDecibels);
+                    }
+
                     break;
                 case "ShowOsd":
                     _settings.ShowOsd = Flag(value, _settings.ShowOsd);
@@ -273,9 +309,18 @@ namespace HTPCAVRVolume.Background
                     _settings.ReconnectTimeoutSeconds = (int)Number(value, _settings.ReconnectTimeoutSeconds);
                     relink = true;
                     break;
+                case "Zone":
+                    SelectZone(value);
+                    break;
                 case "KeepAudioAlive":
                     _settings.KeepAudioAlive = Flag(value, _settings.KeepAudioAlive);
                     _audio.Enable(_settings.KeepAudioAlive);
+                    break;
+                case "MinimiseToTray":
+                    _settings.MinimiseToTray = Flag(value, _settings.MinimiseToTray);
+                    break;
+                case "CloseToTray":
+                    _settings.CloseToTray = Flag(value, _settings.CloseToTray);
                     break;
                 default:
                     return;
@@ -287,6 +332,66 @@ namespace HTPCAVRVolume.Background
             {
                 ApplyConfiguration();
             }
+        }
+
+        /// <summary>
+        /// Moves the app to another zone. Everything the user chose for that zone comes back
+        /// with it. The receiver is only told about the display unit when this zone wants it
+        /// written differently from the way it is being written now: there is one such setting
+        /// for the whole box, so sending it on every switch would be noise.
+        /// </summary>
+        private void SelectZone(string name)
+        {
+            if (!Enum.TryParse(name, out Zone zone) || zone == _settings.ActiveZone)
+            {
+                return;
+            }
+
+            _settings.ActiveZone = zone;
+
+            // The new zone has a ceiling of its own to learn.
+            _maximumApplied = false;
+
+            _controller.Step = _settings.StepDecibels;
+            _controller.MaxVolume = _settings.MaxVolume;
+
+            if (_device == null)
+            {
+                return;
+            }
+
+            _device.Zone = zone;
+
+            if (_device.SupportsDisplayUnit && _device.DecibelDisplay.HasValue &&
+                _device.DecibelDisplay.Value != _settings.OsdDecibels)
+            {
+                _device.SetDecibelDisplay(_settings.OsdDecibels);
+            }
+        }
+
+        /// <summary>
+        /// Keeps the app on a zone that is actually playing. Switching off the zone being driven
+        /// moves to the next one that is on; when none of them is, it sits on main, where the
+        /// window shows everything to do with volume greyed out and only the power buttons live.
+        /// </summary>
+        private void FollowPower()
+        {
+            if (_device == null || _device.PowerOf(_settings.ActiveZone) != false)
+            {
+                // On, or not something the receiver has told us about yet.
+                return;
+            }
+
+            foreach (Zone zone in _device.AvailableZones)
+            {
+                if (_device.PowerOf(zone) == true)
+                {
+                    SelectZone(zone.ToString());
+                    return;
+                }
+            }
+
+            SelectZone(Zone.Main.ToString());
         }
 
         private static double Number(string value, double fallback)
@@ -358,6 +463,7 @@ namespace HTPCAVRVolume.Background
 
             _device.StatusChanged += OnDeviceStatus;
             _device.LinkChanged += OnDeviceLink;
+            _device.Zone = _settings.ActiveZone;
             _controller.Device = _device;
 
             PushState();
@@ -377,6 +483,12 @@ namespace HTPCAVRVolume.Background
             _pump.Post(() =>
             {
                 TakeReportedMaximum();
+                TakeReportedDisplayUnit(e);
+
+                if (e.ZonesChanged)
+                {
+                    FollowPower();
+                }
 
                 if (_settings.ShowOsd && _device != null &&
                     (!e.External || _settings.OsdOnExternalChange) &&
@@ -403,6 +515,27 @@ namespace HTPCAVRVolume.Background
             _maximumApplied = true;
             _settings.MaxVolume = _device.MaxVolume.Value;
             _controller.MaxVolume = _settings.MaxVolume;
+            Save();
+        }
+
+        /// <summary>
+        /// The receiver has the last word on how a volume is written. It tells us when the
+        /// session opens and again whenever anyone changes it -- on the app, on the remote or
+        /// in its own menu -- and we follow.
+        /// </summary>
+        private void TakeReportedDisplayUnit(AvrStatusEventArgs e)
+        {
+            if (!e.DisplayUnitChanged || _device == null || !_device.DecibelDisplay.HasValue)
+            {
+                return;
+            }
+
+            if (_settings.OsdDecibels == _device.DecibelDisplay.Value)
+            {
+                return;
+            }
+
+            _settings.OsdDecibels = _device.DecibelDisplay.Value;
             Save();
         }
 
@@ -434,9 +567,48 @@ namespace HTPCAVRVolume.Background
 
         #region State
 
+        /// <summary>
+        /// The zones worth offering: what the receiver has answered for, and main on its own
+        /// until it has.
+        /// </summary>
+        private string[] ZoneNames()
+        {
+            System.Collections.Generic.IReadOnlyList<Zone> zones =
+                _device?.AvailableZones ?? new[] { Zone.Main };
+
+            string[] names = new string[zones.Count];
+            for (int i = 0; i < zones.Count; i++)
+            {
+                names[i] = zones[i].ToString();
+            }
+
+            return names;
+        }
+
+        /// <summary>Whether each zone we offer is switched on, in the order we offer them.</summary>
+        private bool[] ZonePowers()
+        {
+            System.Collections.Generic.IReadOnlyList<Zone> zones =
+                _device?.AvailableZones ?? new[] { Zone.Main };
+
+            bool[] power = new bool[zones.Count];
+            for (int i = 0; i < zones.Count; i++)
+            {
+                power[i] = _device?.PowerOf(zones[i]) ?? false;
+            }
+
+            return power;
+        }
+
         private void PushState()
         {
-            _server?.Push(Snapshot());
+            if (_server == null || !_server.HasClient)
+            {
+                // Nobody is looking. The window asks for the state as soon as it opens.
+                return;
+            }
+
+            _server.Push(Snapshot());
         }
 
         private State Snapshot()
@@ -446,6 +618,10 @@ namespace HTPCAVRVolume.Background
                 Device = _settings.Device,
                 Host = _settings.Host,
                 Step = _settings.StepDecibels,
+                Zone = _settings.ActiveZone.ToString(),
+                Zones = ZoneNames(),
+                ZonePower = ZonePowers(),
+                Quantum = _device?.VolumeQuantum ?? 0.5,
                 MaxVolume = _settings.MaxVolume,
                 Decibels = _settings.OsdDecibels,
                 ShowOsd = _settings.ShowOsd,
@@ -454,10 +630,13 @@ namespace HTPCAVRVolume.Background
                 ReconnectAttempts = _settings.ReconnectAttempts,
                 ReconnectTimeoutSeconds = _settings.ReconnectTimeoutSeconds,
                 KeepAudioAlive = _settings.KeepAudioAlive,
+                MinimiseToTray = _settings.MinimiseToTray,
+                CloseToTray = _settings.CloseToTray,
                 AudioStatus = _audio?.Status ?? "Off",
                 Volume = _device?.Volume,
                 Muted = _device?.Muted ?? false,
                 SupportsAbsoluteVolume = _device?.SupportsAbsoluteVolume ?? false,
+                FollowsReceiverUnit = _device?.SupportsDisplayUnit ?? false,
                 ZeroDecibelLevel = _device != null ? _device.FromDecibels(0) : 80
             };
 

@@ -14,64 +14,88 @@
         </Grid.RowDefinitions>
 
         <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="0,0,0,4">
-            <StackPanel x:Name="ContentPanel" Spacing="8" Padding="20,4,20,18">
-
-                <TextBlock Text="Volume" Style="{StaticResource TitleTextBlockStyle}" FontSize="20" Margin="0,0,0,2" />
+            <StackPanel x:Name="ContentPanel" Spacing="8" Padding="20,12,20,18">
 
                 <!-- The level, and everything that changes it -->
-                <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                <Border x:Name="VolumeCard"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="{ThemeResource OverlayCornerRadius}"
                         Padding="18,18,18,16">
+                    <!-- A Border cannot be disabled, and this whole card has nothing to offer
+                         until a receiver answers. -->
+                    <ContentControl x:Name="VolumeCardBody" IsTabStop="False"
+                                    HorizontalContentAlignment="Stretch">
                     <StackPanel Spacing="14">
-                        <Grid ColumnSpacing="10" VerticalAlignment="Bottom">
+                        <StackPanel x:Name="LevelBlock" Spacing="0">
+                            <TextBlock Text="Volume" FontSize="12" FontWeight="SemiBold"
+                                       Margin="0,0,0,2"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+
+                            <Grid ColumnSpacing="10" VerticalAlignment="Bottom">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+
+                                <TextBlock x:Name="LevelText" Grid.Column="0"
+                                           Text="--" FontSize="46" FontWeight="SemiBold"
+                                           LineHeight="50" VerticalAlignment="Bottom" />
+                                <TextBlock x:Name="LevelSubtext" Grid.Column="1"
+                                           Text="" FontSize="12" Margin="0,0,0,9"
+                                           VerticalAlignment="Bottom"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                <TextBlock x:Name="MaximumText" Grid.Column="2"
+                                           Text="" FontSize="12" Margin="0,0,0,9"
+                                           HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            </Grid>
+                        </StackPanel>
+
+                        <Grid ColumnSpacing="2">
+                            <Grid.Resources>
+                                <!-- The speaker in the Windows taskbar has no button around it
+                                     until the pointer is over it. Clearing only the resting
+                                     brushes leaves the pointer-over and pressed ones to the
+                                     theme, which is the half worth copying. -->
+                                <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="Transparent" />
+                                <SolidColorBrush x:Key="ButtonBorderBrushDisabled" Color="Transparent" />
+                            </Grid.Resources>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-
-                            <TextBlock x:Name="LevelText" Grid.Column="0"
-                                       Text="--" FontSize="46" FontWeight="SemiBold"
-                                       LineHeight="50" VerticalAlignment="Bottom" />
-                            <TextBlock x:Name="LevelSubtext" Grid.Column="1"
-                                       Text="" FontSize="12" Margin="0,0,0,9"
-                                       VerticalAlignment="Bottom"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                            <TextBlock x:Name="MaximumText" Grid.Column="2"
-                                       Text="" FontSize="12" Margin="0,0,0,9"
-                                       HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
-                        </Grid>
-
-                        <Grid ColumnSpacing="12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
 
-                            <Button x:Name="DownButton" Grid.Column="0" Width="36" Height="36" Padding="0"
+                            <Button x:Name="MuteButton" Grid.Column="0" Width="36" Height="36" Padding="0"
+                                    Click="OnToggleMute">
+                                <FontIcon x:Name="MuteIcon" Glyph="&#xE995;" FontSize="16" />
+                            </Button>
+
+                            <Button x:Name="DownButton" Grid.Column="1" Width="36" Height="36" Padding="0"
                                     Click="OnStepDown" ToolTipService.ToolTip="Turn the volume down one step">
                                 <FontIcon Glyph="&#xE738;" FontSize="16" />
                             </Button>
 
-                            <Slider x:Name="VolumeSlider" Grid.Column="1" VerticalAlignment="Center"
-                                    Margin="0,0,0,0" Minimum="0" Maximum="196" StepFrequency="1"
+                            <Slider x:Name="VolumeSlider" Grid.Column="2" VerticalAlignment="Center"
+                                    Margin="8,0,8,0" Minimum="0" Maximum="196" StepFrequency="1"
                                     IsThumbToolTipEnabled="False"
                                     ValueChanged="OnSliderChanged" />
 
-                            <Button x:Name="UpButton" Grid.Column="2" Width="36" Height="36" Padding="0"
+                            <Button x:Name="UpButton" Grid.Column="3" Width="36" Height="36" Padding="0"
                                     Click="OnStepUp" ToolTipService.ToolTip="Turn the volume up one step">
                                 <FontIcon Glyph="&#xE710;" FontSize="16" />
                             </Button>
-
-                            <Button x:Name="MuteButton" Grid.Column="3" Height="36" MinWidth="76"
-                                    Content="Mute" Click="OnToggleMute" />
                         </Grid>
                     </StackPanel>
+                    </ContentControl>
                 </Border>
 
                 <!-- Receiver -->
@@ -85,8 +109,8 @@
                     <tk:SettingsExpander.Items>
                         <tk:SettingsCard Header="Brand" Description="Control protocol used to talk to the receiver">
                             <ComboBox x:Name="DeviceBox" MinWidth="160" SelectionChanged="OnDeviceChanged">
-                                <ComboBoxItem Content="DenonMarantz" />
-                                <ComboBoxItem Content="StormAudio" />
+                                <ComboBoxItem Content="Denon / Marantz" Tag="DenonMarantz" />
+                                <ComboBoxItem Content="StormAudio" Tag="StormAudio" />
                             </ComboBox>
                         </tk:SettingsCard>
                         <tk:SettingsCard Header="IP address" Description="Receiver menu &#8250; Network &#8250; Information">
@@ -144,7 +168,16 @@
                         <FontIcon Glyph="&#xE9E9;" />
                     </tk:SettingsExpander.HeaderIcon>
                     <tk:SettingsExpander.Items>
-                        <tk:SettingsCard Header="Display unit" Description="Scale (0&#8211;98) or absolute decibels">
+                        <tk:SettingsCard Header="Power"
+                                         Description="Switch a zone on or off on the receiver">
+                            <StackPanel x:Name="PowerButtons" Orientation="Horizontal" Spacing="6" />
+                        </tk:SettingsCard>
+                        <tk:SettingsCard Header="Zone"
+                                         Description="Which speakers the volume keys and the slider drive">
+                            <ComboBox x:Name="ZoneBox" MinWidth="160" SelectionChanged="OnZoneChanged" />
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="UnitCard" Header="Display unit"
+                                         Description="Scale (0&#8211;98) or absolute decibels">
                             <ComboBox x:Name="UnitBox" MinWidth="120" SelectionChanged="OnUnitChanged">
                                 <ComboBoxItem Content="dB" />
                                 <ComboBoxItem Content="Scale" />
@@ -156,11 +189,22 @@
                                        SmallChange="0.5" Minimum="0.5" Maximum="10"
                                        ValueChanged="OnStepSizeChanged" />
                         </tk:SettingsCard>
-                        <tk:SettingsCard Header="Maximum volume" Description="The loudest the app will go, and the top of the slider">
-                            <NumberBox x:Name="MaximumBox" MinWidth="96"
-                                       SpinButtonPlacementMode="Inline"
-                                       SmallChange="0.5"
-                                       ValueChanged="OnMaximumChanged" />
+                        <tk:SettingsCard x:Name="MaximumCard" Header="Maximum volume"
+                                         Description="The loudest the app will go, and the top of the slider">
+                            <Grid>
+                                <NumberBox x:Name="MaximumBox" MinWidth="96"
+                                           SpinButtonPlacementMode="Inline"
+                                           SmallChange="0.5"
+                                           ValueChanged="OnMaximumChanged" />
+                                <!-- A zone has no free choice: its ceiling is the one set in the
+                                     receiver's own Limit menu, which offers exactly these. -->
+                                <ComboBox x:Name="MaximumChoice" MinWidth="96" Visibility="Collapsed"
+                                          SelectionChanged="OnMaximumChoiceChanged">
+                                    <ComboBoxItem Content="60" Tag="60" />
+                                    <ComboBoxItem Content="70" Tag="70" />
+                                    <ComboBoxItem Content="80" Tag="80" />
+                                </ComboBox>
+                            </Grid>
                         </tk:SettingsCard>
                     </tk:SettingsExpander.Items>
                 </tk:SettingsExpander>
@@ -181,6 +225,32 @@
                         <tk:SettingsCard Header="Also when the AVR&#8217;s own remote is used"
                                          Description="Show it for changes you make on the receiver itself">
                             <ToggleSwitch x:Name="RemoteSwitch" MinWidth="0" OnContent="" OffContent="" Toggled="OnRemoteToggled" />
+                        </tk:SettingsCard>
+                    </tk:SettingsExpander.Items>
+                </tk:SettingsExpander>
+
+                <!-- What the window's own buttons do -->
+                <tk:SettingsExpander x:Name="WindowExpander"
+                                     Header="Window buttons"
+                                     Description=""
+                                     IsExpanded="True">
+                    <tk:SettingsExpander.HeaderIcon>
+                        <FontIcon Glyph="&#xE737;" />
+                    </tk:SettingsExpander.HeaderIcon>
+                    <tk:SettingsExpander.Items>
+                        <tk:SettingsCard Header="Minimise button"
+                                         Description="Volume control keeps running either way">
+                            <ComboBox x:Name="MinimiseBox" MinWidth="200" SelectionChanged="OnMinimiseActionChanged">
+                                <ComboBoxItem Content="Minimise the window" />
+                                <ComboBoxItem Content="Send to the notification area" />
+                            </ComboBox>
+                        </tk:SettingsCard>
+                        <tk:SettingsCard x:Name="CloseActionCard" Header="Close button"
+                                         Description="Quitting stops the volume keys and the overlay as well">
+                            <ComboBox x:Name="CloseBox" MinWidth="200" SelectionChanged="OnCloseActionChanged">
+                                <ComboBoxItem Content="Quit the app" />
+                                <ComboBoxItem Content="Send to the notification area" />
+                            </ComboBox>
                         </tk:SettingsCard>
                     </tk:SettingsExpander.Items>
                 </tk:SettingsExpander>

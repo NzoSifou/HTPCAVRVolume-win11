@@ -143,7 +143,7 @@ namespace HTPCAVRVolume.Ui
 
             try
             {
-                AppendMenu(menu, MF_STRING, (IntPtr)ShowCommand, "Open HTPCAVRVolume");
+                AppendMenu(menu, MF_STRING, (IntPtr)ShowCommand, "Configure HTPC AVR Volume");
                 AppendMenu(menu, MF_SEPARATOR, IntPtr.Zero, null);
                 AppendMenu(menu, MF_STRING, (IntPtr)ExitCommand, "Exit");
 
