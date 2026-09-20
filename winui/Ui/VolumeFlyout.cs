@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -133,6 +133,15 @@ namespace HTPCAVRVolume.Ui
                 ShowWindow(_window, SW_SHOWNOACTIVATE);
                 _visible = true;
             }
+
+            // Being topmost is not a place in the z-order, it is a band, and inside that band the
+            // usual rules apply: whichever topmost window was shown last sits in front. Ours was
+            // shown once, when it was created, so any other topmost window that appears later --
+            // an overlay belonging to a game or to Discord, say -- ends up permanently in front of
+            // it, and the flyout stays hidden behind that window until the app is restarted. So we
+            // ask for the front of the band again every single time we come up.
+            SetWindowPos(_window, HWND_TOPMOST, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
 
             Push();
 
@@ -631,6 +640,12 @@ namespace HTPCAVRVolume.Ui
         private const int SW_HIDE = 0;
         private const int SW_SHOWNOACTIVATE = 4;
 
+        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_NOOWNERZORDER = 0x0200;
+
         private const byte AC_SRC_OVER = 0x00;
         private const byte AC_SRC_ALPHA = 0x01;
         private const int ULW_ALPHA = 0x00000002;
@@ -706,6 +721,10 @@ namespace HTPCAVRVolume.Ui
 
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr window, int command);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter,
+            int x, int y, int width, int height, uint flags);
 
         [DllImport("user32.dll")]
         private static extern uint GetDpiForWindow(IntPtr window);
