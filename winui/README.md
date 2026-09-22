@@ -188,6 +188,24 @@ The pipe is opened `Asynchronous` at both ends, which is not decoration. Each si
 thread and writes from another, and on a handle opened for synchronous I/O a blocked read stops the
 write from starting at all: the two sides wait for each other for ever.
 
+## The volume keys have a thread of their own
+
+The low-level keyboard hook is called on the thread that installed it, only while that thread is
+pumping messages, and Windows waits at most a second for the answer (`LowLevelHooksTimeout`,
+capped at one second since Windows 10 1709). Past that the key goes to Windows, and the hook can
+be removed without the application ever being told.
+
+It used to share the main thread, which is also where the collection and working-set trim run
+when the settings window goes away. On a slower machine that was enough: from the moment the
+window was minimised to the notification area, Windows had the volume keys back and kept them,
+with the process still running. Holding the main thread still for three seconds reproduces it on
+any machine -- the keys go to Windows for as long as it is held.
+
+So the hook now lives on a thread that does nothing else, and its callback does nothing but hand
+the key to the main thread and swallow it; with the main thread held for eight seconds the keys
+stay ours throughout. Because a removed hook cannot be detected, it is also put back every minute,
+the new one installed before the old one is taken out so nothing slips between them.
+
 ## What it costs to leave running
 
 Measured connected to a receiver, over 90-second stretches with nobody touching anything:

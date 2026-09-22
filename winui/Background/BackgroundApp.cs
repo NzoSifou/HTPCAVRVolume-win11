@@ -58,7 +58,7 @@ namespace HTPCAVRVolume.Background
             _tray.Activated += (sender, e) => _pump.Post(OpenWindow);
             _tray.ExitRequested += (sender, e) => _pump.Post(Quit);
 
-            _hook = new GlobalKeyboardHook();
+            _hook = new GlobalKeyboardHook(_pump);
             _hook.VolumeUpPressed += (sender, e) => _controller.Nudge(1);
             _hook.VolumeDownPressed += (sender, e) => _controller.Nudge(-1);
             _hook.VolumeMutePressed += (sender, e) => _controller.ToggleMute();
@@ -242,6 +242,14 @@ namespace HTPCAVRVolume.Background
                 case "quit":
                     Quit();
                     break;
+
+#if DEBUG
+                // Test only, never in a release build: holds this thread still, the way a slow
+                // collection or a slow disk would, to prove the volume keys do not depend on it.
+                case "stall":
+                    System.Threading.Thread.Sleep((int)request.Number);
+                    break;
+#endif
             }
         }
 
